@@ -58,7 +58,7 @@ cmd({
 async(conn, mek, m, { from, myquoted }) => {
     const brand = conn.brand || null;
     const ownerNumber = (brand && brand.ownerNumber) || (Array.isArray(config.OWNER_NUMBER) ? config.OWNER_NUMBER[0] : config.OWNER_NUMBER);
-    const displayName = (brand && brand.botName) || 'Naruto-MD';
+    const displayName = (brand && brand.botName) || 'Naruto Mini Bot';
 
     // Création d'une vCard (Fiche contact)
     const vcard = 'BEGIN:VCARD\n' +

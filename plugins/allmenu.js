@@ -13,7 +13,7 @@ cmd({
 }, async (conn, mek, m, { reply }) => {
     try {
         const brand = conn.brand || null;
-        const botDisplayName = (brand && brand.botName) || config.BOT_NAME || 'Naruto-MD';
+        const botDisplayName = (brand && brand.botName) || config.BOT_NAME || 'Naruto Mini Bot';
         const channelJid = (brand && brand.channelJid) || config.CHANNEL_JID;
 
         let totalCommands = 0;

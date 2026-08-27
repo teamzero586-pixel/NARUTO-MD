@@ -190,9 +190,9 @@ body {
 <body>
 
 <div class="topbar">
-    <img src="https://i.ibb.co/k24FR52h/file-0000000069b48207b92f6537b3730c44.png" alt="logo">
+    <img src="/media/naruto-mini-bot-banner.jpg" alt="logo">
     <div>
-        <h1>Naruto-MD</h1>
+        <h1>Naruto Mini Bot</h1>
         <span>Admin Panel</span>
     </div>
 </div>
@@ -200,10 +200,11 @@ body {
 <div class="login-wrap" id="loginWrap">
     <div class="login-card">
         <h2>🛡️ Admin Access</h2>
-        <p>Enter the admin code to continue</p>
-        <input type="password" id="adminCode" placeholder="Admin code">
+        <p>Enter your admin username and password to continue</p>
+        <input type="text" id="adminUser" placeholder="Username" autocomplete="username">
+        <input type="password" id="adminCode" placeholder="Password" autocomplete="current-password">
         <button onclick="login()">UNLOCK</button>
-        <div class="login-err" id="loginErr">❌ Wrong code, try again</div>
+        <div class="login-err" id="loginErr">❌ Wrong username or password, try again</div>
     </div>
 </div>
 
@@ -256,8 +257,10 @@ body {
 
 <script>
 let adminCode = "";
+let adminUser = "";
 
 async function login() {
+    const username = document.getElementById("adminUser").value.trim();
     const code = document.getElementById("adminCode").value.trim();
     const errEl = document.getElementById("loginErr");
     errEl.style.display = "none";
@@ -266,9 +269,10 @@ async function login() {
         const res = await fetch('/api/admin/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
+            body: JSON.stringify({ username, code })
         });
         if (res.ok) {
+            adminUser = username;
             adminCode = code;
             document.getElementById("loginWrap").style.display = "none";
             document.getElementById("dashboard").style.display = "block";
@@ -288,7 +292,7 @@ async function login() {
 document.getElementById("adminCode").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
 
 function authHeaders() {
-    return { 'Content-Type': 'application/json', 'x-admin-code': adminCode };
+    return { 'Content-Type': 'application/json', 'x-admin-user': adminUser, 'x-admin-code': adminCode };
 }
 
 async function loadUsers() {

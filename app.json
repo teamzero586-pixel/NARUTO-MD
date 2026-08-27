@@ -1,7 +1,7 @@
 {
   "name": "Naruto-MD PAIR",
   "description": "SESSION ID GENERATOR FOR WHATSAPP BOTS",
-  "logo": "https://i.ibb.co/k24FR52h/file-0000000069b48207b92f6537b3730c44.png",
+  "logo": "",
   "repository": "https://github.com/YOUR-GITHUB-USERNAME/Naruto-MD",
   "keywords": ["Naruto-MD", "whatsapp-bot"],
   "stack": "heroku-22",

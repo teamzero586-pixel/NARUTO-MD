@@ -6,7 +6,7 @@ const { fakevCard } = require('../lib/fakevCard');
 const config = require("../config");
 
 let botStartTime = Date.now(); // Recording the start time of the bot
-const ALIVE_IMG = config.IMAGE_PATH; // Naruto-MD branding image
+const ALIVE_IMG = config.IMAGE_PATH; // Naruto Mini Bot branding image
 
 cmd({
     pattern: "alive",
@@ -17,7 +17,7 @@ cmd({
 }, async (conn, mek, m, { reply, from }) => {
     try {
         const brand = conn.brand || null;
-        const botDisplayName = (brand && brand.botName) || config.BOT_NAME || 'Naruto-MD';
+        const botDisplayName = (brand && brand.botName) || config.BOT_NAME || 'Naruto Mini Bot';
         const channelJid = (brand && brand.channelJid) || config.CHANNEL_JID;
         const channelName = botDisplayName;
 

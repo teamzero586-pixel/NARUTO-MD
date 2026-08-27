@@ -238,8 +238,8 @@ const AntiDelete = require('./lib/antidelete');
 // ========== SETTINGS.JS SE VALUES ==========
 const prefix = config.PREFIX || '.';
 const mode = config.MODE || config.WORK_TYPE || 'public';
-const BOT_NAME = config.BOT_NAME || 'Naruto-MD';
-const OWNER_NAME = config.OWNER_NAME || 'Naruto-MD';
+const BOT_NAME = config.BOT_NAME || 'Naruto Mini Bot';
+const OWNER_NAME = config.OWNER_NAME || 'Mr.Arslan';
 const OWNER_NUMBER = config.OWNER_NUMBER || [];
 
 // ========== CHANNEL SETTINGS ==========
@@ -365,6 +365,59 @@ const userCache = new SmartCache(200, 300000);
 // ========== ACTIVE SESSIONS ==========
 const activeSockets = new Map();
 const socketCreationTime = new Map();
+
+// ========== CONNECTION WATCHDOG ==========
+// Some disconnects never fire a proper Baileys 'close' event — the
+// underlying WebSocket can go silently stale (idle-connection timeouts on
+// the host platform, a flaky network path, WhatsApp's own server dropping
+// the socket without a clean handshake) while Baileys still believes the
+// connection is "open". Left alone, that's exactly what "the bot stops
+// responding after a few hours, with nothing in the logs" looks like — the
+// process is alive, the socket object exists, but nothing is actually
+// flowing anymore.
+//
+// This proves the connection is really alive every few minutes with a
+// cheap presence-update call (with its own timeout, since Baileys' own
+// query timeout is disabled below — an indefinite hang here would defeat
+// the whole point of a watchdog). If it fails or hangs, it force-closes the
+// socket, which fires a real 'close' event and lets setupAutoRestart's
+// existing backoff/reconnect logic take over automatically — no manual
+// intervention needed.
+const HEARTBEAT_INTERVAL_MS = 4 * 60 * 1000; // check every 4 minutes
+const HEARTBEAT_TIMEOUT_MS = 15 * 1000;      // a healthy connection replies well under this
+const connectionWatchdogs = new Map();
+
+function setupConnectionWatchdog(socket, number) {
+    // Clear any pre-existing watchdog for this number first (defensive —
+    // avoids two intervals stacking up if this ever gets called twice for
+    // the same connection).
+    const existing = connectionWatchdogs.get(number);
+    if (existing) clearInterval(existing);
+
+    const timer = setInterval(async () => {
+        try {
+            if (!socket.user) return; // not fully connected yet — nothing to check
+            await Promise.race([
+                socket.sendPresenceUpdate('available'),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('heartbeat timed out')), HEARTBEAT_TIMEOUT_MS))
+            ]);
+        } catch (e) {
+            arslanLog(`[Watchdog] ${number} looks stale (${e.message}) — forcing a reconnect`, 'warning');
+            try { socket.ws.close(); } catch (_) { /* already closed/dead, nothing more to do */ }
+        }
+    }, HEARTBEAT_INTERVAL_MS);
+
+    connectionWatchdogs.set(number, timer);
+
+    socket.ev.on('connection.update', (update) => {
+        if (update.connection === 'close') {
+            clearInterval(timer);
+            connectionWatchdogs.delete(number);
+        }
+    });
+
+    return timer;
+}
 const processedMessages = new Set();
 
 // ========== SPAM PREVENTION ==========
@@ -752,7 +805,14 @@ async function arslanPair(number, res = null) {
             printQRInTerminal: false,
             logger: pino({ level: "silent" }),
             connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 0,
+            // Previously 0 (= wait forever). A hung query — to a flaky
+            // network path, a WhatsApp server having issues — would then
+            // never resolve OR reject, just sit there permanently. Enough
+            // of those piling up over hours is a plausible cause of a bot
+            // that quietly stops responding despite the process still being
+            // "up". Bounded at 60s so a stuck query eventually fails loudly
+            // instead of hanging forever.
+            defaultQueryTimeoutMs: 60000,
             keepAliveIntervalMs: 10000,
             emitOwnEvents: false,
             fireInitQueries: true,
@@ -782,6 +842,9 @@ async function arslanPair(number, res = null) {
 
         // ========== SETUP AUTO RESTART ==========
         setupAutoRestart(conn, number);
+
+        // ========== SETUP CONNECTION WATCHDOG ==========
+        setupConnectionWatchdog(conn, number);
 
         // ========== DECODE JID ==========
         conn.decodeJid = jid => {
@@ -950,7 +1013,7 @@ conn.ev.on('connection.update', async (update) => {
             try {
                 const welcomeImgSource = (config.IMAGE_PATH && fs.existsSync(config.IMAGE_PATH))
                     ? fs.readFileSync(config.IMAGE_PATH)
-                    : { url: config.IMAGE_PATH || 'https://i.ibb.co/tPBqm8Pj/file-00000000faa8820892863f11bf1c1adc.png' };
+                    : { url: config.IMAGE_PATH };
                 await conn.sendMessage(userJid, {
                     image: welcomeImgSource,
                     caption: connectedMsg
@@ -1424,6 +1487,8 @@ function setupAutoRestart(socket, number) {
         const sanitizedNumber = number.replace(/[^0-9]/g, '');
         activeSockets.delete(sanitizedNumber);
         socketCreationTime.delete(sanitizedNumber);
+        const watchdog = connectionWatchdogs.get(number);
+        if (watchdog) { clearInterval(watchdog); connectionWatchdogs.delete(number); }
         await deleteSessionFromMongoDB(sanitizedNumber);
         await removeNumberFromMongoDB(sanitizedNumber);
         socket.ev.removeAllListeners();
@@ -1540,7 +1605,7 @@ router.get('/force-code', async (req, res) => {
                 printQRInTerminal: false,
                 logger: pino({ level: 'silent' }),
                 connectTimeoutMs: 60000,
-                defaultQueryTimeoutMs: 0,
+                defaultQueryTimeoutMs: 60000, // this socket is short-lived (closes right after getting the pairing code), but no reason to allow an indefinite hang here either
                 keepAliveIntervalMs: 10000,
                 emitOwnEvents: false,
                 fireInitQueries: true,
@@ -2356,8 +2421,9 @@ router.get('/react-vote', async (req, res) => {
 // ============================================
 function checkAdminCode(req, res, next) {
     const code = req.headers['x-admin-code'] || req.query.code || (req.body && req.body.code);
-    if (code !== config.ADMIN_CODE) {
-        return res.status(401).json({ error: 'Invalid admin code' });
+    const username = req.headers['x-admin-user'] || req.query.username || (req.body && req.body.username);
+    if (username !== config.ADMIN_USERNAME || code !== config.ADMIN_CODE) {
+        return res.status(401).json({ error: 'Invalid admin credentials' });
     }
     next();
 }
@@ -2366,7 +2432,10 @@ router.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html
 
 router.post('/api/admin/login', (req, res) => {
     const code = req.body && req.body.code;
-    if (code !== config.ADMIN_CODE) return res.status(401).json({ error: 'Invalid code' });
+    const username = req.body && req.body.username;
+    if (username !== config.ADMIN_USERNAME || code !== config.ADMIN_CODE) {
+        return res.status(401).json({ error: 'Invalid username or password' });
+    }
     return res.json({ status: 'ok' });
 });
 

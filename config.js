@@ -45,15 +45,19 @@ module.exports = {
     //  🛡️ ADMIN PANEL
     // ═══════════════════════════════════════════
     /**
-     * @description Passcode required to open the /admin dashboard.
-     * SECURITY: better to override this via a Heroku Config Var instead of
-     * relying on the hardcoded fallback below — Config Vars never appear in
+     * @description Username + passcode required to open the /admin dashboard.
+     * SECURITY: better to override these via Heroku Config Vars instead of
+     * relying on the hardcoded fallbacks below — Config Vars never appear in
      * your GitHub repo or in any HTML the browser can see.
      *   Heroku Dashboard → your app → Settings → "Reveal Config Vars"
-     *   → Add: KEY = ADMIN_CODE, VALUE = <your own strong code>
+     *   → Add: ADMIN_USERNAME = <yours>, ADMIN_CODE = <a strong password>
+     * Note: "trytohackme" is a fine placeholder to get started, but it's
+     * exactly the kind of password someone will actually try — swap it for
+     * something real once things are working.
      * @type {string}
      */
-    ADMIN_CODE: process.env.ADMIN_CODE || 'tzusman094',
+    ADMIN_USERNAME: process.env.ADMIN_USERNAME || 'zeeshan0299',
+    ADMIN_CODE: process.env.ADMIN_CODE || 'trytohackme',
 
     // ═══════════════════════════════════════════
     //  🔥 GITHUB SETTINGS (MANDATORY)
@@ -121,7 +125,7 @@ module.exports = {
      * @description Display name of the bot
      * @type {string}
      */
-    BOT_NAME: process.env.BOT_NAME || 'Naruto-MD',
+    BOT_NAME: process.env.BOT_NAME || 'Naruto Mini Bot',
 
     /**
      * @description Owner name
@@ -360,10 +364,13 @@ module.exports = {
     // ═══════════════════════════════════════════
 
     /**
-     * @description Default bot profile image path/URL
+     * @description Default bot profile image. Points at the local file in
+     * media/ (served by index.js's /media static route, and read directly
+     * off disk for outgoing WhatsApp messages) — no external image host
+     * dependency. Replace media/naruto-mini-bot-banner.jpg to change it.
      * @type {string}
      */
-    IMAGE_PATH: process.env.IMAGE_PATH || 'https://i.ibb.co/k24FR52h/file-0000000069b48207b92f6537b3730c44.png',
+    IMAGE_PATH: process.env.IMAGE_PATH || path.join(__dirname, 'media', 'naruto-mini-bot-banner.jpg'),
 
     /**
      * @description WhatsApp channel link for updates
