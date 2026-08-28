@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>👑 Naruto Mini Bot 👑</title>
 
+<meta name="description" content="Naruto Mini Bot — pair your WhatsApp number in seconds and get a fast, always-on WhatsApp bot with group admin tools, fun commands, anti-delete, anti-call and more. Powered by Mr.Arslan.">
+<meta name="keywords" content="Naruto Mini Bot, WhatsApp bot, Mr.Arslan, WhatsApp pairing code, WhatsApp automation, group admin bot">
+<meta name="author" content="Mr.Arslan">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Naruto Mini Bot — Pair Your WhatsApp">
+<meta property="og:description" content="Pair your WhatsApp number in seconds and get a fast, always-on WhatsApp bot. Powered by Mr.Arslan.">
+<meta property="og:image" content="/media/naruto-mini-bot-banner.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Naruto Mini Bot — Pair Your WhatsApp">
+<meta name="twitter:description" content="Pair your WhatsApp number in seconds and get a fast, always-on WhatsApp bot. Powered by Mr.Arslan.">
+<meta name="twitter:image" content="/media/naruto-mini-bot-banner.jpg">
+<meta name="theme-color" content="#ffb800">
+
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
@@ -437,16 +451,23 @@ body::before {
         <div class="hint">TYPE YOUR WHATSAPP NUMBER</div>
         <div class="hint-small">
             Any country works — country code + number, no + or 00<br>
-            🇵🇰 92... &nbsp;·&nbsp; 🇮🇳 91... &nbsp;·&nbsp; 🇻🇪 58... &nbsp;·&nbsp; 🇸🇦 966...
+            🇵🇰 92... &nbsp;·&nbsp; 🇮🇳 91... &nbsp;·&nbsp; 🇻🇪 58... &nbsp;·&nbsp; 🇸🇦 966...<br>
+            🇵🇰 Pakistani number? You can also just type it as 03XXXXXXXXX — it's converted automatically.
         </div>
 
-        <input class="input-box" type="text" id="number" inputmode="numeric" placeholder="e.g. 923123456789">
+        <input class="input-box" type="text" id="number" inputmode="numeric" placeholder="e.g. 923123456789 or 03123456789">
+
+        <label style="display:flex; align-items:center; gap:8px; justify-content:center; margin:10px 0; font-size:0.85rem; color:#ccc; cursor:pointer;">
+            <input type="checkbox" id="forceJoin" style="width:16px; height:16px; cursor:pointer;">
+            Force Join (disconnect this number's old session first, if any)
+        </label>
 
         <button class="btn" id="getBtn" onclick="getCode()">GET PAIR CODE</button>
 
         <div class="result-box" id="resultBox">
             <div class="result-text" id="resultText">----</div>
             <button class="copy-btn" id="copyBtn" onclick="copyCode()">📋 COPY CODE</button>
+            <div class="custom-hint" id="pairStatusHint" style="display:none; margin-top:10px;"></div>
         </div>
 
         <div class="badges">
@@ -500,7 +521,7 @@ body::before {
 
             <div class="field-label">📢 YOUR CHANNEL</div>
             <input type="text" id="c_channelJid" placeholder="Paste a channel link OR JID">
-            <div class="custom-hint">Shown as "forwarded from" on your replies — nothing else changes: the bot itself still only follows/reacts to the main Naruto-MD channel. Paste either a channel link (whatsapp.com/channel/...) or a raw JID — a link gets converted automatically when you hit CREATE.</div>
+            <div class="custom-hint">Shown as "forwarded from" on your replies — nothing else changes: the bot itself still only follows/reacts to the main Naruto Mini Bot channel. Paste either a channel link (whatsapp.com/channel/...) or a raw JID — a link gets converted automatically when you hit CREATE.</div>
 
             <div class="field-label">👑 YOUR OWNER NUMBER</div>
             <input type="text" id="c_ownerNumber" placeholder="e.g. 923001234567">
@@ -563,6 +584,49 @@ body::before {
 
 <script>
 let currentCode = "";
+let pairPollTimer = null;
+let pairPollDeadline = 0;
+
+function stopPairPolling() {
+    if (pairPollTimer) { clearInterval(pairPollTimer); pairPollTimer = null; }
+}
+
+// WhatsApp pairing codes expire ~60s after being issued if never entered on
+// the phone. Before this, the page gave zero feedback after showing the
+// code — it just sat there looking "stuck" whether pairing was still
+// possible or the code had already gone dead. This polls /pair-status every
+// 3s and updates a status line so the person actually knows what's
+// happening, and tells them plainly (instead of silence) once the code has
+// expired so they know to request a new one rather than keep waiting on a
+// dead code.
+function startPairPolling(number) {
+    stopPairPolling();
+    const hint = document.getElementById("pairStatusHint");
+    hint.style.display = "block";
+    hint.style.color = "#9b59ff";
+    hint.innerText = "⏳ Waiting for you to enter this code in WhatsApp (Linked Devices → Link with phone number)…";
+    pairPollDeadline = Date.now() + 75000; // a little past WhatsApp's own ~60s code lifetime
+
+    pairPollTimer = setInterval(async () => {
+        if (Date.now() > pairPollDeadline) {
+            stopPairPolling();
+            hint.style.color = "#ff4d6d";
+            hint.innerText = "⌛ This code has expired. Tap GET PAIR CODE again for a fresh one.";
+            return;
+        }
+        try {
+            const res = await fetch(`/pair-status?number=${number}`);
+            const data = await res.json();
+            if (data.status === 'success' && data.data && data.data.status === 'connected') {
+                stopPairPolling();
+                hint.style.color = "#6bcb77";
+                hint.innerText = "✅ Connected! Your bot is now live on WhatsApp.";
+            }
+        } catch (e) {
+            // transient network hiccup while polling — not fatal, just try again next tick
+        }
+    }, 3000);
+}
 
 async function getCode() {
     const num = document.getElementById("number").value.replace(/[^0-9]/g, '');
@@ -570,11 +634,14 @@ async function getCode() {
     const resultText = document.getElementById("resultText");
     const copyBtn = document.getElementById("copyBtn");
     const getBtn = document.getElementById("getBtn");
+    const hint = document.getElementById("pairStatusHint");
 
     copyBtn.style.display = "none";
     copyBtn.classList.remove("copied");
     copyBtn.innerText = "📋 COPY CODE";
     currentCode = "";
+    stopPairPolling();
+    hint.style.display = "none";
 
     if (!num) {
         resultBox.style.display = "block";
@@ -593,7 +660,9 @@ async function getCode() {
     try {
         const refParam = new URLSearchParams(window.location.search).get('brand');
         const refQuery = refParam ? `&ref=${encodeURIComponent(refParam)}` : '';
-        const res = await fetch(`/code?number=${num}${refQuery}`);
+        const forceJoin = document.getElementById("forceJoin").checked;
+        const forceQuery = forceJoin ? `&force=true` : '';
+        const res = await fetch(`/code?number=${num}${refQuery}${forceQuery}`);
         const data = await res.json();
 
         if (data.code) {
@@ -603,15 +672,19 @@ async function getCode() {
             resultText.innerText = data.code;
             copyBtn.style.display = "block";
             autoCopy(data.code);
+            startPairPolling(num);
         } else if (data.status === "already_connected") {
             resultText.style.color = "#ffd93d";
-            resultText.innerText = "ALREADY CONNECTED ✅ (use /disconnect first to re-pair)";
+            resultText.innerText = forceJoin
+                ? "STILL SHOWING CONNECTED — TRY AGAIN IN A MOMENT"
+                : "ALREADY CONNECTED ✅ (tick \"Force Join\" above to disconnect it and re-pair)";
         } else if (data.status === "connection_in_progress") {
             resultText.style.color = "#ffd93d";
             resultText.innerText = "ALREADY CONNECTING… WAIT A FEW SECONDS AND TRY AGAIN";
         } else if (data.status === "reconnecting") {
             resultText.style.color = "#6bcb77";
             resultText.innerText = "RECONNECTING WITH EXISTING SESSION ✅";
+            startPairPolling(num);
         } else if (data.error || data.message || data.details) {
             resultText.style.color = "#ff4d6d";
             resultText.innerText = "❌ " + (data.message || data.error || data.details);
@@ -948,7 +1021,7 @@ async function doSendFeedback() {
 // ── Personalized branding via ?brand=<name-slug> in the URL ──
 // If someone opens a shared link like yoursite.com/?brand=my-cool-bot,
 // show that bot's saved custom name/image on this page instead of the
-// default Naruto-MD branding — the person can still pair their OWN
+// default Naruto Mini Bot branding — the person can still pair their OWN
 // number as normal; only the cosmetic branding shown here changes.
 // Old links shared before this update used the raw number instead of a
 // name (yoursite.com/?brand=923xxxxxxxxx) — those still work too.

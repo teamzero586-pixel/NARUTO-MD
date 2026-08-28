@@ -1,22 +1,45 @@
 {
-  "name": "Naruto-MD PAIR",
-  "description": "SESSION ID GENERATOR FOR WHATSAPP BOTS",
+  "name": "Naruto Mini Bot",
+  "description": "WhatsApp bot with pairing-code login, group admin tools, and an admin dashboard — powered by Mr.Arslan",
   "logo": "",
   "repository": "https://github.com/YOUR-GITHUB-USERNAME/Naruto-MD",
-  "keywords": ["Naruto-MD", "whatsapp-bot"],
+  "keywords": ["Naruto Mini Bot", "whatsapp-bot"],
   "stack": "heroku-22",
-  "success_url": "/", 
+  "success_url": "/",
   "buildpacks": [
     { "url": "https://github.com/heroku/heroku-buildpack-nodejs#latest" }
   ],
   "formation": {
     "web": { "quantity": 1, "size": "eco" }
   },
-  "env": {      
+  "env": {
+    "MONGODB_URI": {
+      "description": "REQUIRED — your MongoDB connection string (mongodb+srv://...). Without this, sessions won't survive a dyno restart and the bot will need re-pairing constantly.",
+      "required": true
+    },
+    "OWNER_NUMBER": {
+      "description": "Your WhatsApp number(s) with country code, no + or spaces (comma-separated for multiple owners), e.g. 923001234567",
+      "required": true
+    },
+    "OWNER_NAME": {
+      "description": "Name shown as the bot owner",
+      "value": "Mr.Arslan",
+      "required": false
+    },
+    "ADMIN_USERNAME": {
+      "description": "Username for the /admin dashboard login",
+      "value": "zeeshan0299",
+      "required": false
+    },
+    "ADMIN_CODE": {
+      "description": "Password for the /admin dashboard login — change this from the default before going live",
+      "value": "trytohackme",
+      "required": false
+    },
     "MESSAGE": {
-      "description": "Msg Attached With Session ID",
+      "description": "Message attached with the session ID",
       "value": "⚡ BY || MR.ARSLAN ⚡",
-      "required": false 
+      "required": false
     }
   }
 }

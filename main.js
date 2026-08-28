@@ -27,7 +27,32 @@ const {
     jidDecode,
     downloadContentFromMessage,
     getContentType,
+    fetchLatestBaileysVersion,
 } = require('@whiskeysockets/baileys');
+
+// ========== WHATSAPP WEB VERSION ==========
+// WhatsApp updates their web protocol version independently of Baileys
+// releases. The socket was being created with no `version` at all, which
+// means Baileys falls back to whatever version number is bundled inside
+// whichever Baileys release npm happens to install — if that's even
+// slightly behind what WhatsApp's servers currently expect, the classic
+// symptom is exactly "pairing code accepted on the phone, then it just
+// hangs on Linking… forever" with no clear error anywhere. Fetching the
+// live version at startup (with a safe fallback if the fetch itself fails,
+// e.g. no network yet) is the standard fix for this.
+let cachedWAVersion = null;
+async function getWAVersion() {
+    if (cachedWAVersion) return cachedWAVersion;
+    try {
+        const { version, isLatest } = await fetchLatestBaileysVersion();
+        cachedWAVersion = version;
+        arslanLog(`Using WhatsApp Web version ${version.join('.')} (${isLatest ? 'latest' : 'outdated — Baileys may need updating'})`, 'info');
+    } catch (e) {
+        arslanLog(`Could not fetch the latest WhatsApp Web version (${e.message}) — falling back to Baileys' bundled default`, 'warning');
+        cachedWAVersion = undefined; // makeWASocket handles `version: undefined` fine — uses its own bundled default
+    }
+    return cachedWAVersion;
+}
 
 // ========== SETTINGS.JS SE FETCH ==========
 const config = require('./config');
@@ -501,13 +526,37 @@ function getBotJid(socket) {
     return num ? `${num}@s.whatsapp.net` : "";
 }
 
+// ========== PHONE NUMBER NORMALIZATION ==========
+// Baileys' requestPairingCode() needs a full international MSISDN with no
+// leading zero (e.g. "923001234567"). A Pakistani number typed in local
+// format ("03001234567") was being sent through completely unchanged — that
+// is not a valid international number, so the pairing request would fail.
+// Defined here (before its first use below) and used EVERYWHERE a number
+// gets sanitized in this file — status checks, disconnect, force-code, etc.
+// all used to just strip non-digits with no normalization, which meant a
+// number paired as "03001234567" -> normalized to "923001234567" would
+// never be found again by any endpoint still looking it up as "03001234567".
+//   03XXXXXXXXX (11 digits, starts with 0)      -> 923XXXXXXXXX
+//   3XXXXXXXXX  (10 digits, starts with 3 — the 92 without the leading 0)
+//                                                 -> 923XXXXXXXXX
+//   anything else (already has a country code, e.g. 92..., 1..., 44...)
+//                                                 -> left as-is, digits only
+function normalizePhoneNumber(raw) {
+    const digits = String(raw || '').replace(/[^0-9]/g, '');
+    if (/^03\d{9}$/.test(digits)) return '92' + digits.slice(1);   // 03XXXXXXXXX -> 92XXXXXXXXX
+    if (/^3\d{9}$/.test(digits)) return '92' + digits;             // 3XXXXXXXXX  -> 923XXXXXXXXX
+    return digits; // any other country's number — pass through with the country code the user typed
+}
+
 function isNumberAlreadyConnected(number) {
-    return activeSockets.has(number.replace(/[^0-9]/g, ''));
+    const socket = activeSockets.get(normalizePhoneNumber(number));
+    return !!(socket && socket.isReady);
 }
 
 function getConnectionStatus(number) {
-    const n = number.replace(/[^0-9]/g, '');
-    const isConnected = activeSockets.has(n);
+    const n = normalizePhoneNumber(number);
+    const socket = activeSockets.get(n);
+    const isConnected = !!(socket && socket.isReady);
     const connectionTime = socketCreationTime.get(n);
     return {
         isConnected,
@@ -750,19 +799,45 @@ async function autoFollowChannel(conn, userJid) {
     }
 }
 // ========== MAIN PAIR FUNCTION ==========
-async function arslanPair(number, res = null) {
+async function arslanPair(number, res = null, force = false) {
     let connectionLockKey;
-    const sanitizedNumber = number.replace(/[^0-9]/g, '');
+    const sanitizedNumber = normalizePhoneNumber(number);
 
     try {
         const sessionPath = path.join(__dirname, 'session', `session_${sanitizedNumber}`);
 
         if (isNumberAlreadyConnected(sanitizedNumber)) {
-            const status = getConnectionStatus(sanitizedNumber);
-            if (res && !res.headersSent) {
-                return res.json({ status: 'already_connected', message: 'Number is already connected', connectionTime: status.connectionTime, uptime: `${status.uptime} seconds` });
+            if (force) {
+                // ========== FORCE JOIN ==========
+                // Kill the existing live connection for this number first,
+                // then fall through and pair fresh below — instead of
+                // refusing with "already_connected". This does NOT wipe the
+                // saved session/creds from MongoDB, so if the number really
+                // is still validly registered, it reconnects straight away
+                // rather than forcing a brand-new pairing code.
+                arslanLog(`Force-join requested for ${sanitizedNumber} — closing the existing connection first`, 'warning');
+                try {
+                    const oldSocket = activeSockets.get(sanitizedNumber);
+                    if (oldSocket) {
+                        oldSocket.ev.removeAllListeners();
+                        await oldSocket.ws.close();
+                    }
+                } catch (e) { /* old socket already dead — nothing more to clean up */ }
+                activeSockets.delete(sanitizedNumber);
+                socketCreationTime.delete(sanitizedNumber);
+                const oldWatchdog = connectionWatchdogs.get(number) || connectionWatchdogs.get(sanitizedNumber);
+                if (oldWatchdog) {
+                    clearInterval(oldWatchdog);
+                    connectionWatchdogs.delete(number);
+                    connectionWatchdogs.delete(sanitizedNumber);
+                }
+            } else {
+                const status = getConnectionStatus(sanitizedNumber);
+                if (res && !res.headersSent) {
+                    return res.json({ status: 'already_connected', message: 'Number is already connected', connectionTime: status.connectionTime, uptime: `${status.uptime} seconds` });
+                }
+                return;
             }
-            return;
         }
 
         connectionLockKey = `arslan_lock_${sanitizedNumber}`;
@@ -796,8 +871,10 @@ async function arslanPair(number, res = null) {
         // the socket's own logger below.
         const logger = pino({ level: 'silent' });
         const store = createStore();
+        const waVersion = await getWAVersion();
 
         const conn = makeWASocket({
+            version: waVersion,
             auth: {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, logger),
@@ -827,6 +904,7 @@ async function arslanPair(number, res = null) {
         });
 
         socketCreationTime.set(sanitizedNumber, Date.now());
+        conn.isReady = false; // flips to true only once 'connection.update' reports connection === 'open' below — see isNumberAlreadyConnected/getConnectionStatus, which used to (wrongly) treat "socket object exists" as "connected", even during the pairing-code window before the phone has linked
         activeSockets.set(sanitizedNumber, conn);
         store.bind(conn.ev);
 
@@ -960,6 +1038,7 @@ conn.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === 'open') {
         arslanLog(`Connected: ${sanitizedNumber}`, 'success');
+        conn.isReady = true;
         const userJid = jidNormalizedUser(conn.user.id);
         await addNumberToMongoDB(sanitizedNumber);
         
@@ -1484,7 +1563,7 @@ function setupAutoRestart(socket, number) {
 
     async function cleanupPermanently(reason) {
         arslanLog(`${reason} for ${number}, stopping retries and cleaning up session.`, 'warning');
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
         activeSockets.delete(sanitizedNumber);
         socketCreationTime.delete(sanitizedNumber);
         const watchdog = connectionWatchdogs.get(number);
@@ -1518,7 +1597,7 @@ function setupAutoRestart(socket, number) {
 
             const backoff = Math.min(10000 * restartAttempts, maxBackoffMs);
             arslanLog(`Reconnecting ${number} (attempt ${restartAttempts}/${MAX_CONSECUTIVE_FAILURES}) in ${backoff / 1000}s...`, 'warning');
-            const sanitizedNumber = number.replace(/[^0-9]/g, '');
+            const sanitizedNumber = normalizePhoneNumber(number);
             activeSockets.delete(sanitizedNumber);
             socketCreationTime.delete(sanitizedNumber);
             socket.ev.removeAllListeners();
@@ -1547,7 +1626,7 @@ router.get('/force-code', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
         arslanLog(`🔥 Force pairing requested for ${sanitizedNumber}`, 'warning');
 
@@ -1596,8 +1675,10 @@ router.get('/force-code', async (req, res) => {
 
             const { state } = await useMultiFileAuthState(sessionPathNew);
             const logger = pino({ level: 'silent' });
+            const waVersion = await getWAVersion();
 
             const conn = makeWASocket({
+                version: waVersion,
                 auth: {
                     creds: state.creds,
                     keys: makeCacheableSignalKeyStore(state.keys, logger),
@@ -1679,7 +1760,7 @@ router.get('/force-reset', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
         arslanLog(`🔥🔥 FORCE RESET requested for ${sanitizedNumber}`, 'warning');
 
@@ -1771,9 +1852,12 @@ router.get('/check-session', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
-        const isActive = activeSockets.has(sanitizedNumber);
+        // isNumberAlreadyConnected checks socket.isReady (truly linked to
+        // WhatsApp), not just "a socket object exists" — a pending
+        // pairing-code socket used to report as "connected" here too.
+        const isActive = isNumberAlreadyConnected(sanitizedNumber);
 
         let hasMongoSession = false;
         try {
@@ -1821,9 +1905,16 @@ router.get('/pair-status', async (req, res) => {
             });
         }
 
-        const sanitizedNumber = number.replace(/[^0-9]/g, '');
+        const sanitizedNumber = normalizePhoneNumber(number);
 
-        const isActive = activeSockets.has(sanitizedNumber);
+        // Same fix as /check-session: only report "connected" once the
+        // socket has actually finished linking with WhatsApp
+        // (socket.isReady), not just because a socket object exists while a
+        // pairing code is still waiting to be entered on the phone. This is
+        // also what the pairing page's status polling reads to know when to
+        // show "✅ Connected!" — with the old logic it would have shown that
+        // immediately, before the person had even typed the code in.
+        const isActive = isNumberAlreadyConnected(sanitizedNumber);
         let hasMongoSession = false;
         try {
             const session = await getSessionFromMongoDB(sanitizedNumber);
@@ -2025,7 +2116,8 @@ router.get('/code', async (req, res) => {
     if (req.query.ref) {
         try { await saveReferral(req.query.number, req.query.ref); } catch (e) { /* non-fatal */ }
     }
-    await arslanPair(req.query.number, res);
+    const force = req.query.force === 'true' || req.query.force === '1';
+    await arslanPair(req.query.number, res, force);
 });
 
 router.get('/status', async (req, res) => {
@@ -2033,9 +2125,9 @@ router.get('/status', async (req, res) => {
     if (!number) {
         const list = Array.from(activeSockets.keys()).map(n => {
             const s = getConnectionStatus(n);
-            return { number: n, status: 'connected', connectionTime: s.connectionTime, uptime: `${s.uptime} seconds` };
+            return { number: n, status: s.isConnected ? 'connected' : 'pairing_pending', connectionTime: s.connectionTime, uptime: `${s.uptime} seconds` };
         });
-        return res.json({ totalActive: activeSockets.size, connections: list });
+        return res.json({ totalActive: list.filter(l => l.status === 'connected').length, connections: list });
     }
     const s = getConnectionStatus(number);
     res.json({ number, isConnected: s.isConnected, connectionTime: s.connectionTime, uptime: `${s.uptime} seconds` });
@@ -2044,7 +2136,7 @@ router.get('/status', async (req, res) => {
 router.get('/disconnect', async (req, res) => {
     const { number } = req.query;
     if (!number) return res.status(400).json({ error: 'Number required' });
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     if (!activeSockets.has(n)) return res.status(404).json({ error: 'Not found' });
     try {
         const socket = activeSockets.get(n);
@@ -2098,7 +2190,7 @@ router.get('/update-config', async (req, res) => {
     let newConfig;
     try { newConfig = JSON.parse(configString); } catch (_) { return res.status(400).json({ error: 'Invalid config' }); }
 
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     const socket = activeSockets.get(n);
     if (!socket) return res.status(404).json({ error: 'No active session' });
 
@@ -2117,7 +2209,7 @@ router.get('/update-config', async (req, res) => {
 router.get('/verify-otp', async (req, res) => {
     const { number, otp } = req.query;
     if (!number || !otp) return res.status(400).json({ error: 'Number and OTP required' });
-    const n = number.replace(/[^0-9]/g, '');
+    const n = normalizePhoneNumber(number);
     const verification = await verifyOTPFromMongoDB(n, otp);
     if (!verification.valid) return res.status(400).json({ error: verification.error });
     await updateUserConfigInMongoDB(n, verification.config);
@@ -2131,7 +2223,7 @@ router.get('/stats', async (req, res) => {
     if (!number) return res.status(400).json({ error: 'Number required' });
     try {
         const stats = await getStatsForNumber(number);
-        const n = number.replace(/[^0-9]/g, '');
+        const n = normalizePhoneNumber(number);
         const s = getConnectionStatus(n);
         res.json({ number: n, connectionStatus: s.isConnected ? 'Connected' : 'Disconnected', uptime: s.uptime, stats });
     } catch (e) {
@@ -2446,9 +2538,11 @@ router.get('/api/admin/users', checkAdminCode, async (req, res) => {
 
         const users = Array.from(activeSockets.keys()).map(number => {
             const createdAt = socketCreationTime.get(number);
-            const brand = activeSockets.get(number).brand;
+            const socket = activeSockets.get(number);
+            const brand = socket.brand;
             return {
                 number,
+                status: socket.isReady ? 'connected' : 'pairing_pending',
                 connectedSince: createdAt ? new Date(createdAt).toISOString() : null,
                 brand: brand ? {
                     botName: brand.botName || '',
@@ -2593,6 +2687,13 @@ router.get('/users', async (req, res) => {
 
         for (const user of allUsers) {
             const socket = activeSockets.get(user);
+            // socket.user is only populated once WhatsApp actually finishes
+            // linking (connection === 'open'). A pending pairing-code socket
+            // has no .user yet, so calling jidNormalizedUser(socket.user.id)
+            // on it threw and took down this ENTIRE endpoint — for every
+            // user, not just the pending one — any time a pairing was in
+            // progress anywhere. Skipped instead of crashing.
+            if (!socket.isReady || !socket.user) continue;
             const userJid = jidNormalizedUser(socket.user.id);
             userDetails.push({
                 number: user,
@@ -2604,7 +2705,7 @@ router.get('/users', async (req, res) => {
         return res.json({
             status: 'success',
             data: {
-                totalUsers: allUsers.length,
+                totalUsers: userDetails.length,
                 users: userDetails,
                 timestamp: new Date().toISOString()
             }
