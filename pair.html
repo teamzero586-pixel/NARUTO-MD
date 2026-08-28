@@ -19,9 +19,40 @@
 <meta name="twitter:image" content="/media/naruto-mini-bot-banner.jpg">
 <meta name="theme-color" content="#ffb800">
 
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Bebas+Neue&display=swap" rel="stylesheet">
 
 <style>
+/*
+  Design tokens — Naruto Mini Bot
+  Palette pulled from the bot's own banner art (Hidden-Leaf night, chakra
+  gold/ember) instead of the generic animated-rainbow-gradient look this
+  page used before.
+    --void     near-black warm brown — page background, night village
+    --panel    card surface
+    --panel-2  input/inset surface, one step lighter than panel
+    --gold     primary accent — chakra gold
+    --ember    secondary accent — warm orange-red
+    --ink      body text (warm off-white, not pure white)
+    --ink-dim  muted text
+    --line     hairline borders, gold-tinted
+  Display type: Bebas Neue (condensed, poster-impact — echoes the banner's
+  own lettering) for the headline only, used with restraint. Poppins stays
+  for every UI/body element since it's legible at small sizes on a phone.
+*/
+:root {
+    --void: #0a0704;
+    --panel: #161009;
+    --panel-2: #1f160d;
+    --gold: #ffb833;
+    --gold-soft: #ffd580;
+    --ember: #ff6a2c;
+    --ink: #f5ecdc;
+    --ink-dim: #b7a68d;
+    --line: rgba(255, 184, 51, 0.22);
+    --danger: #ff5470;
+    --good: #5fd68a;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -35,15 +66,15 @@ html, body {
     overscroll-behavior: none;
 }
 
-@keyframes liveBg {
-    0%   { background-position: 0% 50%; }
-    50%  { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+@keyframes emberDrift {
+    0%   { background-position: 0% 0%, 100% 100%; }
+    50%  { background-position: 8% 4%, 92% 96%; }
+    100% { background-position: 0% 0%, 100% 100%; }
 }
 
 @keyframes floatGlow {
     0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+    50% { transform: translateY(-6px); }
 }
 
 @keyframes spin {
@@ -52,13 +83,18 @@ html, body {
 }
 
 @keyframes pop {
-    0% { transform: scale(0.9); opacity: 0; }
+    0% { transform: scale(0.94); opacity: 0; }
     100% { transform: scale(1); opacity: 1; }
 }
 
-@keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 20px rgba(255,255,255,0.15); }
-    50% { box-shadow: 0 0 40px rgba(255,255,255,0.35); }
+@keyframes chakraPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,184,51,0.0), 0 18px 60px rgba(0,0,0,0.6); }
+    50% { box-shadow: 0 0 0 6px rgba(255,184,51,0.08), 0 18px 60px rgba(0,0,0,0.6); }
+}
+
+@keyframes sweep {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(220%); }
 }
 
 body {
@@ -69,24 +105,16 @@ body {
     align-items: center;
     justify-content: center;
     font-family: 'Poppins', sans-serif;
-    color: #fff;
+    color: var(--ink);
     padding: 0;
     overflow-x: hidden;
-    background: linear-gradient(120deg,
-        #ff4d6d, #ff8a4d, #ffd93d, #6bcb77, #4d96ff, #9b59ff, #ff4dd2, #ff4d6d);
-    background-size: 400% 400%;
-    animation: liveBg 18s ease infinite;
-    position: relative;
-}
-
-body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
     background:
-        radial-gradient(ellipse at 20% 20%, rgba(0,0,0,0.4) 0%, transparent 55%),
-        radial-gradient(ellipse at 80% 80%, rgba(0,0,0,0.4) 0%, transparent 55%);
-    pointer-events: none;
+        radial-gradient(ellipse 700px 500px at 12% -6%, rgba(255,106,44,0.16) 0%, transparent 60%),
+        radial-gradient(ellipse 700px 500px at 88% 106%, rgba(255,184,51,0.12) 0%, transparent 60%),
+        var(--void);
+    background-size: 200% 200%, 200% 200%, 100% 100%;
+    animation: emberDrift 22s ease-in-out infinite;
+    position: relative;
 }
 
 .wrap {
@@ -96,7 +124,7 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px 16px;
+    padding: 28px 16px;
     position: relative;
     z-index: 1;
 }
@@ -104,84 +132,98 @@ body::before {
 .card {
     width: 100%;
     max-width: 440px;
-    background: rgba(8, 8, 14, 0.88);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border-radius: 30px;
-    padding: 34px 26px 30px;
+    background: linear-gradient(180deg, var(--panel) 0%, #120c07 100%);
+    border-radius: 26px;
+    padding: 0 24px 28px;
     text-align: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow:
-        0 30px 90px rgba(0, 0, 0, 0.85),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    animation: pop 0.5s ease;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255,255,255,0.04);
+    animation: pop 0.5s ease, chakraPulse 4s ease-in-out infinite;
+    overflow: hidden;
+    position: relative;
+}
+
+/* thin gold sweep across the top edge — the one signature flourish, kept restrained */
+.card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--gold), var(--ember), var(--gold), transparent);
+    background-size: 300% auto;
+    opacity: 0.9;
 }
 
 .logo {
-    width: 108px;
-    height: 108px;
-    object-fit: contain;
-    border-radius: 22px;
-    margin-bottom: 16px;
-    box-shadow: 0 10px 34px rgba(0,0,0,0.55);
-    animation: floatGlow 4s ease-in-out infinite;
+    display: block;
+    width: calc(100% + 48px);
+    margin: 0 -24px 18px;
+    object-fit: cover;
+    aspect-ratio: 1 / 1;
+    border-bottom: 2px solid var(--line);
+    animation: floatGlow 5s ease-in-out infinite;
 }
 
 .title {
-    font-size: 1.5rem;
-    font-weight: 800;
-    background: linear-gradient(90deg, #ff4d6d, #ffd93d, #6bcb77, #4d96ff, #9b59ff);
+    margin-top: 18px;
+    font-family: 'Bebas Neue', 'Poppins', sans-serif;
+    font-size: 1.9rem;
+    letter-spacing: 2px;
+    font-weight: 400;
+    background: linear-gradient(90deg, var(--gold-soft), var(--gold), var(--ember), var(--gold));
     background-size: 300% auto;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    animation: liveBg 8s linear infinite;
-    line-height: 1.3;
+    animation: emberDrift 8s linear infinite;
+    line-height: 1.2;
 }
 
 .subtitle {
-    margin-top: 6px;
-    font-size: 1.05rem;
+    margin-top: 4px;
+    font-size: 0.95rem;
     font-weight: 700;
-    letter-spacing: 3px;
-    color: #fff;
-    opacity: 0.9;
+    letter-spacing: 4px;
+    color: var(--ink-dim);
 }
 
 .hint {
-    margin-top: 14px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: rgba(255,255,255,0.55);
+    margin-top: 16px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--gold-soft);
 }
 
 .hint-small {
     margin-top: 4px;
     font-size: 0.68rem;
-    color: rgba(255,255,255,0.4);
-    line-height: 1.5;
+    color: var(--ink-dim);
+    line-height: 1.6;
 }
 
 .input-box {
-    margin-top: 18px;
+    margin-top: 16px;
     width: 100%;
     padding: 16px 18px;
     font-size: 1.05rem;
     font-weight: 600;
     text-align: center;
     letter-spacing: 1px;
-    border-radius: 16px;
-    border: 2px solid transparent;
-    background:
-        linear-gradient(#0c0c14, #0c0c14) padding-box,
-        linear-gradient(90deg, #ffd93d, #4d96ff) border-box;
-    color: #fff;
+    border-radius: 14px;
+    border: 1.5px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink);
     outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.input-box:focus {
+    border-color: var(--gold);
 }
 
 .input-box::placeholder {
-    color: rgba(255,255,255,0.35);
+    color: rgba(245, 236, 220, 0.32);
 }
 
 .btn {
@@ -189,15 +231,17 @@ body::before {
     width: 100%;
     padding: 16px;
     border: none;
-    border-radius: 16px;
-    font-size: 1rem;
+    border-radius: 14px;
+    font-size: 0.95rem;
     font-weight: 800;
-    letter-spacing: 1px;
-    color: #0c0c14;
-    background: linear-gradient(90deg, #ffd93d, #6bcb77, #4d96ff);
+    letter-spacing: 1.5px;
+    color: #1a0f04;
+    background: linear-gradient(90deg, var(--gold-soft), var(--gold), var(--ember));
     background-size: 200% auto;
     cursor: pointer;
     transition: transform 0.15s ease, background-position 0.4s ease;
+    position: relative;
+    overflow: hidden;
 }
 
 .btn:active {
@@ -205,22 +249,29 @@ body::before {
     background-position: right center;
 }
 
+.btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .result-box {
     margin-top: 18px;
     width: 100%;
     display: none;
     padding: 18px 16px;
-    border-radius: 16px;
-    border: 2px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.04);
-    animation: pop 0.35s ease, pulseGlow 2.5s ease-in-out infinite;
+    border-radius: 14px;
+    border: 1.5px solid var(--line);
+    background: var(--panel-2);
+    animation: pop 0.35s ease;
 }
 
 .result-text {
-    font-size: 1.35rem;
+    font-size: 1.4rem;
     font-weight: 800;
     word-break: break-word;
-    color: #fff;
+    color: var(--gold-soft);
+    font-family: 'Bebas Neue', 'Poppins', sans-serif;
+    letter-spacing: 3px;
 }
 
 .copy-btn {
@@ -228,15 +279,14 @@ body::before {
     margin-top: 12px;
     width: 100%;
     padding: 12px;
-    border: none;
     border-radius: 12px;
     font-size: 0.85rem;
     font-weight: 700;
     letter-spacing: 0.5px;
-    background: rgba(255,255,255,0.1);
-    color: #fff;
+    background: rgba(255,184,51,0.08);
+    color: var(--ink);
     cursor: pointer;
-    border: 1px solid rgba(255,255,255,0.15);
+    border: 1px solid var(--line);
 }
 
 .copy-btn:active {
@@ -244,16 +294,17 @@ body::before {
 }
 
 .copy-btn.copied {
-    background: linear-gradient(90deg, #6bcb77, #4d96ff);
-    color: #0c0c14;
+    background: linear-gradient(90deg, var(--good), #3fae6a);
+    color: #08150d;
+    border-color: transparent;
 }
 
 .spinner {
     display: inline-block;
     width: 16px;
     height: 16px;
-    border: 2px solid rgba(255,255,255,0.25);
-    border-top-color: #fff;
+    border: 2px solid rgba(245,236,220,0.25);
+    border-top-color: var(--gold);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
     vertical-align: middle;
@@ -277,14 +328,14 @@ body::before {
     width: 52px;
     height: 52px;
     border-radius: 50%;
-    border: none;
-    background: linear-gradient(135deg, #4d96ff, #9b59ff);
-    color: #fff;
+    border: 1px solid var(--line);
+    background: linear-gradient(135deg, var(--ember), var(--gold));
+    color: #1a0f04;
     font-size: 1.4rem;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
     cursor: pointer;
     z-index: 50;
-    animation: pulseGlow 3s ease-in-out infinite;
+    animation: chakraPulse 3s ease-in-out infinite;
 }
 .fab:active { transform: translateY(-50%) scale(0.92); }
 
@@ -293,7 +344,7 @@ body::before {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.75);
+    background: rgba(5, 3, 1, 0.8);
     backdrop-filter: blur(6px);
     z-index: 100;
     align-items: center;
@@ -308,9 +359,9 @@ body::before {
     max-width: 420px;
     max-height: 88vh;
     overflow-y: auto;
-    background: #0c0c14;
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 22px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 20px;
     padding: 26px 20px 22px;
     text-align: left;
     animation: pop 0.3s ease;
@@ -323,30 +374,31 @@ body::before {
     width: 30px;
     height: 30px;
     border-radius: 50%;
-    border: none;
-    background: rgba(255,255,255,0.08);
-    color: #fff;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.05);
+    color: var(--ink);
     font-size: 0.9rem;
     cursor: pointer;
 }
 
 .modal-title {
-    font-size: 1.15rem;
-    font-weight: 800;
+    font-family: 'Bebas Neue', 'Poppins', sans-serif;
+    font-size: 1.35rem;
+    letter-spacing: 1px;
     margin-bottom: 6px;
-    background: linear-gradient(90deg, #ff4d6d, #ffd93d, #6bcb77, #4d96ff, #9b59ff);
+    background: linear-gradient(90deg, var(--gold-soft), var(--gold), var(--ember));
     background-size: 300% auto;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    animation: liveBg 8s linear infinite;
+    animation: emberDrift 8s linear infinite;
 }
 
 .modal-card .field-label {
     font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.5px;
-    color: rgba(255,255,255,0.55);
+    color: var(--ink-dim);
     margin: 14px 0 6px;
 }
 .modal-card .field-label:first-of-type { margin-top: 4px; }
@@ -357,31 +409,31 @@ body::before {
     padding: 12px 14px;
     font-size: 0.85rem;
     border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: rgba(255,255,255,0.04);
-    color: #fff;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink);
     outline: none;
 }
-.modal-card input[type="text"]::placeholder { color: rgba(255,255,255,0.3); }
+.modal-card input[type="text"]::placeholder { color: rgba(245,236,220,0.3); }
 
 .modal-card textarea {
     width: 100%;
     padding: 12px 14px;
     font-size: 0.85rem;
     border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.15);
-    background: rgba(255,255,255,0.04);
-    color: #fff;
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--ink);
     outline: none;
     resize: vertical;
     min-height: 80px;
     font-family: inherit;
 }
-.modal-card textarea::placeholder { color: rgba(255,255,255,0.3); }
+.modal-card textarea::placeholder { color: rgba(245,236,220,0.3); }
 
 .custom-hint {
     font-size: 0.62rem;
-    color: rgba(255,255,255,0.4);
+    color: var(--ink-dim);
     margin-top: 4px;
     line-height: 1.4;
 }
@@ -393,7 +445,7 @@ body::before {
     height: 56px;
     object-fit: cover;
     border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.2);
+    border: 1px solid var(--line);
 }
 
 .save-btn {
@@ -405,8 +457,8 @@ body::before {
     font-size: 0.9rem;
     font-weight: 800;
     letter-spacing: 0.5px;
-    color: #0c0c14;
-    background: linear-gradient(90deg, #4d96ff, #9b59ff, #ff4dd2);
+    color: #1a0f04;
+    background: linear-gradient(90deg, var(--gold-soft), var(--gold), var(--ember));
     background-size: 200% auto;
     cursor: pointer;
 }
@@ -425,16 +477,16 @@ body::before {
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.5px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
-    color: rgba(255,255,255,0.75);
+    background: rgba(255,184,51,0.07);
+    border: 1px solid var(--line);
+    color: var(--ink-dim);
 }
 
 .footer-text {
     margin-top: 16px;
     font-size: 0.65rem;
     letter-spacing: 1px;
-    color: rgba(255,255,255,0.4);
+    color: var(--ink-dim);
     font-weight: 600;
 }
 </style>
@@ -457,7 +509,7 @@ body::before {
 
         <input class="input-box" type="text" id="number" inputmode="numeric" placeholder="e.g. 923123456789 or 03123456789">
 
-        <label style="display:flex; align-items:center; gap:8px; justify-content:center; margin:10px 0; font-size:0.85rem; color:#ccc; cursor:pointer;">
+        <label style="display:flex; align-items:center; gap:8px; justify-content:center; margin:10px 0; font-size:0.85rem; color:var(--ink-dim); cursor:pointer;">
             <input type="checkbox" id="forceJoin" style="width:16px; height:16px; cursor:pointer;">
             Force Join (disconnect this number's old session first, if any)
         </label>
@@ -496,7 +548,7 @@ body::before {
                 (number + password) keeps your settings safe so only you can edit them later.
             </div>
             <button class="save-btn" onclick="showRegisterScreen()">🆕 REGISTER (first time)</button>
-            <button class="save-btn" style="margin-top:10px; background:linear-gradient(90deg,#6bcb77,#4d96ff);" onclick="showLoginScreen()">🔑 LOGIN (edit my settings)</button>
+            <button class="save-btn" style="margin-top:10px; background:linear-gradient(90deg,var(--gold-soft),var(--gold));" onclick="showLoginScreen()">🔑 LOGIN (edit my settings)</button>
         </div>
 
         <!-- Screen 2: register -->
@@ -528,7 +580,7 @@ body::before {
             <div class="custom-hint">Shown when someone uses .owner on your bot.</div>
 
             <button class="save-btn" onclick="doRegister()">✨ CREATE MY BOT</button>
-            <button class="save-btn" style="margin-top:8px; background:rgba(255,255,255,0.08); color:#fff;" onclick="showAuthChoice()">← Back</button>
+            <button class="save-btn" style="margin-top:8px; background:rgba(255,184,51,0.08); color:var(--ink); border:1px solid var(--line);" onclick="showAuthChoice()">← Back</button>
             <div class="save-status" id="saveStatus"></div>
         </div>
 
@@ -543,7 +595,7 @@ body::before {
             <input type="text" id="login_password" placeholder="Your password">
 
             <button class="save-btn" onclick="doLogin()">🔓 LOGIN</button>
-            <button class="save-btn" style="margin-top:8px; background:rgba(255,255,255,0.08); color:#fff;" onclick="showAuthChoice()">← Back</button>
+            <button class="save-btn" style="margin-top:8px; background:rgba(255,184,51,0.08); color:var(--ink); border:1px solid var(--line);" onclick="showAuthChoice()">← Back</button>
             <div class="save-status" id="loginStatus"></div>
         </div>
 
@@ -577,7 +629,7 @@ body::before {
             <button class="save-btn" style="margin-top:8px;" onclick="doSendFeedback()">📨 SEND TO ADMIN</button>
             <div class="save-status" id="feedbackStatus"></div>
 
-            <button class="save-btn" style="margin-top:16px; background:rgba(255,255,255,0.08); color:#fff;" onclick="showAuthChoice()">← Back</button>
+            <button class="save-btn" style="margin-top:16px; background:rgba(255,184,51,0.08); color:var(--ink); border:1px solid var(--line);" onclick="showAuthChoice()">← Back</button>
         </div>
     </div>
 </div>
@@ -603,14 +655,14 @@ function startPairPolling(number) {
     stopPairPolling();
     const hint = document.getElementById("pairStatusHint");
     hint.style.display = "block";
-    hint.style.color = "#9b59ff";
+    hint.style.color = "#ffb833";
     hint.innerText = "⏳ Waiting for you to enter this code in WhatsApp (Linked Devices → Link with phone number)…";
     pairPollDeadline = Date.now() + 75000; // a little past WhatsApp's own ~60s code lifetime
 
     pairPollTimer = setInterval(async () => {
         if (Date.now() > pairPollDeadline) {
             stopPairPolling();
-            hint.style.color = "#ff4d6d";
+            hint.style.color = "#ff5470";
             hint.innerText = "⌛ This code has expired. Tap GET PAIR CODE again for a fresh one.";
             return;
         }
@@ -619,7 +671,7 @@ function startPairPolling(number) {
             const data = await res.json();
             if (data.status === 'success' && data.data && data.data.status === 'connected') {
                 stopPairPolling();
-                hint.style.color = "#6bcb77";
+                hint.style.color = "#5fd68a";
                 hint.innerText = "✅ Connected! Your bot is now live on WhatsApp.";
             }
         } catch (e) {
@@ -645,7 +697,7 @@ async function getCode() {
 
     if (!num) {
         resultBox.style.display = "block";
-        resultText.style.color = "#ff4d6d";
+        resultText.style.color = "#ff5470";
         resultText.style.letterSpacing = "normal";
         resultText.innerText = "APNA WHATSAPP NUMBER LIKHE";
         return;
@@ -653,7 +705,7 @@ async function getCode() {
 
     resultBox.style.display = "block";
     resultText.style.letterSpacing = "normal";
-    resultText.style.color = "#9b59ff";
+    resultText.style.color = "#ffb833";
     resultText.innerHTML = '<span class="spinner"></span>CONNECTING...';
     getBtn.disabled = true;
 
@@ -668,32 +720,32 @@ async function getCode() {
         if (data.code) {
             currentCode = data.code;
             resultText.style.letterSpacing = "5px";
-            resultText.style.color = "#fff";
+            resultText.style.color = "#f5ecdc";
             resultText.innerText = data.code;
             copyBtn.style.display = "block";
             autoCopy(data.code);
             startPairPolling(num);
         } else if (data.status === "already_connected") {
-            resultText.style.color = "#ffd93d";
+            resultText.style.color = "#ffd580";
             resultText.innerText = forceJoin
                 ? "STILL SHOWING CONNECTED — TRY AGAIN IN A MOMENT"
                 : "ALREADY CONNECTED ✅ (tick \"Force Join\" above to disconnect it and re-pair)";
         } else if (data.status === "connection_in_progress") {
-            resultText.style.color = "#ffd93d";
+            resultText.style.color = "#ffd580";
             resultText.innerText = "ALREADY CONNECTING… WAIT A FEW SECONDS AND TRY AGAIN";
         } else if (data.status === "reconnecting") {
-            resultText.style.color = "#6bcb77";
+            resultText.style.color = "#5fd68a";
             resultText.innerText = "RECONNECTING WITH EXISTING SESSION ✅";
             startPairPolling(num);
         } else if (data.error || data.message || data.details) {
-            resultText.style.color = "#ff4d6d";
+            resultText.style.color = "#ff5470";
             resultText.innerText = "❌ " + (data.message || data.error || data.details);
         } else {
-            resultText.style.color = "#ff4d6d";
+            resultText.style.color = "#ff5470";
             resultText.innerText = "UNKNOWN ERROR — TRY AGAIN";
         }
     } catch (e) {
-        resultText.style.color = "#ff4d6d";
+        resultText.style.color = "#ff5470";
         resultText.innerText = "❌ NETWORK/SERVER ERROR — TRY AGAIN";
     } finally {
         getBtn.disabled = false;
@@ -840,7 +892,7 @@ async function resolveChannelIfNeeded(channelJid, statusEl) {
 
 function showPersonalLink(statusEl, slugOrNum, displayName, warning) {
     const personalLink = `${window.location.origin}/?brand=${encodeURIComponent(slugOrNum)}`;
-    statusEl.style.color = "#6bcb77";
+    statusEl.style.color = "#5fd68a";
     statusEl.innerHTML = `✅ <b>${displayName}</b> saved!<br><br>` +
         `<b>Apna personalized pairing link:</b><br>` +
         `<span style="word-break:break-all;font-size:0.68rem;">${personalLink}</span><br>` +
@@ -855,8 +907,8 @@ async function doRegister() {
     const statusEl = document.getElementById("saveStatus");
     statusEl.style.display = "block";
 
-    if (!num) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "⚠️ Apna WhatsApp number likhein"; return; }
-    if (!password || password.length < 4) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "⚠️ Password kam se kam 4 characters ka ho"; return; }
+    if (!num) { statusEl.style.color = "#ff5470"; statusEl.innerText = "⚠️ Apna WhatsApp number likhein"; return; }
+    if (!password || password.length < 4) { statusEl.style.color = "#ff5470"; statusEl.innerText = "⚠️ Password kam se kam 4 characters ka ho"; return; }
 
     const botName = document.getElementById("c_botName").value.trim();
     const botImageUrl = document.getElementById("c_botImageUrl").value.trim();
@@ -864,12 +916,12 @@ async function doRegister() {
     let channelJid = document.getElementById("c_channelJid").value.trim();
     const ownerNumber = document.getElementById("c_ownerNumber").value.trim();
 
-    statusEl.style.color = "#9b59ff";
+    statusEl.style.color = "#ffb833";
     statusEl.innerText = "Registering...";
 
     try {
         const resolved = await resolveChannelIfNeeded(channelJid, statusEl);
-        if (!resolved.ok) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "❌ Channel link resolve nahi hui: " + resolved.error; return; }
+        if (!resolved.ok) { statusEl.style.color = "#ff5470"; statusEl.innerText = "❌ Channel link resolve nahi hui: " + resolved.error; return; }
         channelJid = resolved.jid;
 
         statusEl.innerText = "Registering...";
@@ -882,11 +934,11 @@ async function doRegister() {
         if (res.ok && data.status === 'ok') {
             showPersonalLink(statusEl, data.slug || num, botName || 'Your Bot', resolved.warning);
         } else {
-            statusEl.style.color = "#ff4d6d";
+            statusEl.style.color = "#ff5470";
             statusEl.innerText = "❌ " + (data.error || "Registration failed, try again");
         }
     } catch (e) {
-        statusEl.style.color = "#ff4d6d";
+        statusEl.style.color = "#ff5470";
         statusEl.innerText = "❌ Network error, try again";
     }
 }
@@ -897,9 +949,9 @@ async function doLogin() {
     const statusEl = document.getElementById("loginStatus");
     statusEl.style.display = "block";
 
-    if (!num || !password) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "⚠️ Number aur password dono likhein"; return; }
+    if (!num || !password) { statusEl.style.color = "#ff5470"; statusEl.innerText = "⚠️ Number aur password dono likhein"; return; }
 
-    statusEl.style.color = "#9b59ff";
+    statusEl.style.color = "#ffb833";
     statusEl.innerText = "Logging in...";
 
     try {
@@ -926,17 +978,17 @@ async function doLogin() {
             if (data.brand.slug) {
                 const personalLink = `${window.location.origin}/?brand=${encodeURIComponent(data.brand.slug)}`;
                 linkEl.style.display = "block";
-                linkEl.style.color = "#6bcb77";
+                linkEl.style.color = "#5fd68a";
                 linkEl.innerHTML = `<b>Apna personalized pairing link:</b><br>` +
                     `<span style="word-break:break-all;font-size:0.68rem;">${personalLink}</span><br>` +
                     `<button class="small-btn" style="margin-top:8px;" onclick="navigator.clipboard.writeText('${personalLink}').then(()=>this.innerText='✅ COPIED')">📋 COPY LINK</button>`;
             }
         } else {
-            statusEl.style.color = "#ff4d6d";
+            statusEl.style.color = "#ff5470";
             statusEl.innerText = "❌ " + (data.error || "Login failed");
         }
     } catch (e) {
-        statusEl.style.color = "#ff4d6d";
+        statusEl.style.color = "#ff5470";
         statusEl.innerText = "❌ Network error, try again";
     }
 }
@@ -947,7 +999,7 @@ async function doUpdate() {
     const statusEl = document.getElementById("editStatus");
     statusEl.style.display = "block";
 
-    if (!num || !password) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "⚠️ Session expired, dobara login karein"; return; }
+    if (!num || !password) { statusEl.style.color = "#ff5470"; statusEl.innerText = "⚠️ Session expired, dobara login karein"; return; }
 
     const botName = document.getElementById("e_botName").value.trim();
     const botImageUrl = document.getElementById("e_botImageUrl").value.trim();
@@ -955,12 +1007,12 @@ async function doUpdate() {
     let channelJid = document.getElementById("e_channelJid").value.trim();
     const ownerNumber = document.getElementById("e_ownerNumber").value.trim();
 
-    statusEl.style.color = "#9b59ff";
+    statusEl.style.color = "#ffb833";
     statusEl.innerText = "Saving...";
 
     try {
         const resolved = await resolveChannelIfNeeded(channelJid, statusEl);
-        if (!resolved.ok) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "❌ Channel link resolve nahi hui: " + resolved.error; return; }
+        if (!resolved.ok) { statusEl.style.color = "#ff5470"; statusEl.innerText = "❌ Channel link resolve nahi hui: " + resolved.error; return; }
         channelJid = resolved.jid;
 
         statusEl.innerText = "Saving...";
@@ -973,11 +1025,11 @@ async function doUpdate() {
         if (res.ok && data.status === 'ok') {
             showPersonalLink(statusEl, data.slug || num, botName || 'Your Bot', resolved.warning);
         } else {
-            statusEl.style.color = "#ff4d6d";
+            statusEl.style.color = "#ff5470";
             statusEl.innerText = "❌ " + (data.error || "Update failed, try again");
         }
     } catch (e) {
-        statusEl.style.color = "#ff4d6d";
+        statusEl.style.color = "#ff5470";
         statusEl.innerText = "❌ Network error, try again";
     }
 }
@@ -988,13 +1040,13 @@ async function doSendFeedback() {
     const statusEl = document.getElementById("feedbackStatus");
     statusEl.style.display = "block";
 
-    if (!num || !password) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "⚠️ Session expired, dobara login karein"; return; }
+    if (!num || !password) { statusEl.style.color = "#ff5470"; statusEl.innerText = "⚠️ Session expired, dobara login karein"; return; }
 
     const messageEl = document.getElementById("feedbackMessage");
     const message = messageEl.value.trim();
-    if (!message) { statusEl.style.color = "#ff4d6d"; statusEl.innerText = "⚠️ Pehle message likhein"; return; }
+    if (!message) { statusEl.style.color = "#ff5470"; statusEl.innerText = "⚠️ Pehle message likhein"; return; }
 
-    statusEl.style.color = "#9b59ff";
+    statusEl.style.color = "#ffb833";
     statusEl.innerText = "Sending...";
 
     try {
@@ -1005,15 +1057,15 @@ async function doSendFeedback() {
         });
         const data = await res.json();
         if (res.ok && data.status === 'ok') {
-            statusEl.style.color = "#6bcb77";
+            statusEl.style.color = "#5fd68a";
             statusEl.innerText = "✅ Admin panel ko bhej diya gaya!";
             messageEl.value = "";
         } else {
-            statusEl.style.color = "#ff4d6d";
+            statusEl.style.color = "#ff5470";
             statusEl.innerText = "❌ " + (data.error || "Bhejne mein masla, dobara koshish karein");
         }
     } catch (e) {
-        statusEl.style.color = "#ff4d6d";
+        statusEl.style.color = "#ff5470";
         statusEl.innerText = "❌ Network error, try again";
     }
 }

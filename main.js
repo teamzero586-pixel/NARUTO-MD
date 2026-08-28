@@ -896,7 +896,16 @@ async function arslanPair(number, res = null, force = false) {
             generateHighQualityLinkPreview: true,
             syncFullHistory: false, // bot only needs new messages, not the entire chat history — this was causing massive delays/memory use on every reconnect
             markOnlineOnConnect: true,
-            browser: ['Mac OS', 'Safari', '10.15.7'],
+            // Was ['Mac OS', 'Safari', '10.15.7'] — this specific browser
+            // fingerprint is well known in the Baileys community to cause
+            // exactly the symptom "pairing code accepted on the phone, then
+            // it sits on 'Logging in…' forever": WhatsApp's servers deliver
+            // the code and let it be entered, but the session-establishment
+            // handshake that follows never completes under that fingerprint
+            // for the pairing-code linking flow. Browsers.ubuntu('Chrome')
+            // is the combo most consistently reported to work for
+            // requestPairingCode() specifically.
+            browser: Browsers.ubuntu('Chrome'),
             getMessage: async (key) => {
                 const msg = await store.loadMessage(key.remoteJid, key.id);
                 return msg && msg.message ? msg.message : { conversation: BOT_NAME };
@@ -948,6 +957,46 @@ async function arslanPair(number, res = null, force = false) {
             return trueFileName;
         };
 
+        // ========== CREDS UPDATE ==========
+        // Baileys can fire 'creds.update' very frequently (every prekey
+        // rotation, session handshake, etc.) — screenshots showed this
+        // saving to MongoDB every ~500ms in a bad case, which is a lot of
+        // file I/O + JSON parsing + two MongoDB round-trips EVERY time,
+        // eating memory/CPU fast enough to hit Heroku's memory quota
+        // within a couple of minutes. The local file save (saveCreds())
+        // still happens every time — that's cheap and Baileys needs it to
+        // stay correct — but the MongoDB write is debounced to at most
+        // once every 5 seconds, keeping only the latest state.
+        //
+        // Moved to BEFORE the pairing-code request below (it used to be
+        // registered after) — the actual handshake that happens once the
+        // code is entered on the phone fires 'creds.update' as it
+        // negotiates the session, and that needs to be listened for from
+        // the very first possible moment, not after a network round-trip
+        // to request the code has already completed.
+        let credsUpdateTimer = null;
+        conn.ev.on('creds.update', async () => {
+            await saveCreds();
+            if (credsUpdateTimer) return; // a save is already scheduled
+            credsUpdateTimer = setTimeout(async () => {
+                credsUpdateTimer = null;
+                try {
+                    const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
+                    const creds = JSON.parse(fileContent);
+                    if (!conn.__newSessionChecked) {
+                        conn.__newSessionChecked = true;
+                        const existingSessionCheck = await getSessionFromMongoDB(sanitizedNumber);
+                        if (!existingSessionCheck) {
+                            arslanLog(`🎉 NEW user ${sanitizedNumber} successfully registered!`, 'success');
+                        }
+                    }
+                    await saveSessionToMongoDB(sanitizedNumber, creds);
+                } catch (e) {
+                    console.error('[CredsSave] Failed:', e.message);
+                }
+            }, 5000);
+        });
+
         // ========== PAIRING ==========
         if (!conn.authState.creds.registered) {
             arslanLog(`🔐 Starting NEW pairing process for ${sanitizedNumber}`, 'info');
@@ -971,39 +1020,6 @@ async function arslanPair(number, res = null, force = false) {
                 res.json({ status: 'reconnecting', message: 'Reconnecting with existing session' });
             }
         }
-
-        // ========== CREDS UPDATE ==========
-        // Baileys can fire 'creds.update' very frequently (every prekey
-        // rotation, session handshake, etc.) — screenshots showed this
-        // saving to MongoDB every ~500ms in a bad case, which is a lot of
-        // file I/O + JSON parsing + two MongoDB round-trips EVERY time,
-        // eating memory/CPU fast enough to hit Heroku's memory quota
-        // within a couple of minutes. The local file save (saveCreds())
-        // still happens every time — that's cheap and Baileys needs it to
-        // stay correct — but the MongoDB write is debounced to at most
-        // once every 5 seconds, keeping only the latest state.
-        let credsUpdateTimer = null;
-        conn.ev.on('creds.update', async () => {
-            await saveCreds();
-            if (credsUpdateTimer) return; // a save is already scheduled
-            credsUpdateTimer = setTimeout(async () => {
-                credsUpdateTimer = null;
-                try {
-                    const fileContent = await fs.readFile(path.join(sessionPath, 'creds.json'), 'utf8');
-                    const creds = JSON.parse(fileContent);
-                    if (!conn.__newSessionChecked) {
-                        conn.__newSessionChecked = true;
-                        const existingSessionCheck = await getSessionFromMongoDB(sanitizedNumber);
-                        if (!existingSessionCheck) {
-                            arslanLog(`🎉 NEW user ${sanitizedNumber} successfully registered!`, 'success');
-                        }
-                    }
-                    await saveSessionToMongoDB(sanitizedNumber, creds);
-                } catch (e) {
-                    console.error('[CredsSave] Failed:', e.message);
-                }
-            }, 5000);
-        });
 
         // ========== ANTI-DELETE (FIXED) ==========
         conn.ev.on('messages.update', async (updates) => {
@@ -1693,7 +1709,7 @@ router.get('/force-code', async (req, res) => {
                 generateHighQualityLinkPreview: true,
                 syncFullHistory: false, // bot only needs new messages, not the entire chat history — this was causing massive delays/memory use on every reconnect
                 markOnlineOnConnect: true,
-                browser: ['Mac OS', 'Safari', '10.15.7'],
+                browser: Browsers.ubuntu('Chrome'), // same fix as the main socket — see the detailed comment there
                 getMessage: async () => ({ conversation: BOT_NAME })
             });
 
