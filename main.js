@@ -849,8 +849,28 @@ async function arslanPair(number, res = null, force = false) {
 
         const existingSession = await getSessionFromMongoDB(sanitizedNumber);
 
-        if (!existingSession) {
-            arslanLog(`No MongoDB session for ${sanitizedNumber} — new pairing required`, 'info');
+        // Only trust a saved session as a real, reconnectable pairing if
+        // Baileys itself marked it `registered: true` (that flag only
+        // flips once a pairing has actually completed successfully). The
+        // creds.update listener further down saves to MongoDB on a timer
+        // regardless of whether pairing ever finished — so a session that
+        // failed partway through (exactly what "Couldn't link device:
+        // something went wrong" on the phone looks like) could still leave
+        // a half-formed, unregistered credential set behind in MongoDB.
+        // Restoring THAT on the next attempt reuses mismatched keys and
+        // reproduces the same link failure every retry. Anything not
+        // cleanly registered is now treated as garbage and wiped from both
+        // MongoDB and disk so every retry starts from a genuinely clean
+        // slate.
+        const hasValidSession = !!(existingSession && existingSession.registered === true);
+
+        if (!hasValidSession) {
+            if (existingSession) {
+                arslanLog(`Discarding an incomplete/unregistered session for ${sanitizedNumber} — starting fresh`, 'warning');
+                try { await deleteSessionFromMongoDB(sanitizedNumber); } catch (e) { /* non-fatal */ }
+            } else {
+                arslanLog(`No MongoDB session for ${sanitizedNumber} — new pairing required`, 'info');
+            }
             if (fs.existsSync(sessionPath)) {
                 await fs.remove(sessionPath);
                 arslanLog(`Cleaned leftover local session for ${sanitizedNumber}`, 'info');
@@ -925,13 +945,19 @@ async function arslanPair(number, res = null, force = false) {
         }
 
         // ========== SETUP CALL HANDLERS ==========
-        setupCallHandlers(conn, number);
+        // Was passing the raw, un-normalized `number` here while every
+        // config lookup for this bot instance elsewhere is keyed by
+        // `sanitizedNumber` — for a Pakistani local-format number
+        // ("03...") this meant .anticall's saved on/off setting (keyed by
+        // the normalized "92...") could never be found by this handler,
+        // silently defaulting to off no matter what was configured.
+        setupCallHandlers(conn, sanitizedNumber);
 
         // ========== SETUP AUTO RESTART ==========
-        setupAutoRestart(conn, number);
+        setupAutoRestart(conn, sanitizedNumber);
 
         // ========== SETUP CONNECTION WATCHDOG ==========
-        setupConnectionWatchdog(conn, number);
+        setupConnectionWatchdog(conn, sanitizedNumber);
 
         // ========== DECODE JID ==========
         conn.decodeJid = jid => {
@@ -1126,8 +1152,24 @@ conn.ev.on('connection.update', async (update) => {
 });
         // ========== MESSAGE HANDLER (arslan-MD Style) ==========
         conn.ev.on('messages.upsert', async (msg) => {
+            // Baileys can (and regularly does) deliver more than one message
+            // in a single 'messages.upsert' batch — a burst of messages sent
+            // quickly, or several arriving while reconnecting. This used to
+            // read only msg.messages[0] and silently ignore every other
+            // message in the batch — exactly the kind of thing that looks
+            // like "the bot is slow / sometimes doesn't reply" from the
+            // outside, when really it just never saw most of what was sent.
+            // Wrapped the whole per-message body in this inner function so
+            // every `return` inside it keeps meaning "done with THIS
+            // message" (not "stop processing the entire batch"), and now
+            // loop over every message in the batch instead of just the
+            // first.
+            for (const mek of msg.messages) {
+                await processOneMessage(mek);
+            }
+
+            async function processOneMessage(mek) {
             try {
-                let mek = msg.messages[0];
                 if (!mek.message) return;
 
                 // ── AUTO CHANNEL REACT ──
@@ -1490,6 +1532,7 @@ conn.ev.on('connection.update', async (update) => {
 
             } catch (e) {
                 console.error("[ ❌ ] Message handler error:", e.message);
+            }
             }
         });
 
