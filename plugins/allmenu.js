@@ -63,7 +63,14 @@ ${menuText}
             image: menuImageSource,
             caption,
             contextInfo: {
-                mentionedJid: [m.sender]
+                mentionedJid: [m.sender],
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: channelJid,
+                    newsletterName: botDisplayName,
+                    serverMessageId: 2,
+                }
             }
         };
         await conn.sendMessage(m.chat, menuPayload, { quoted: fakevCard });

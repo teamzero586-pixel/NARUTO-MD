@@ -91,7 +91,16 @@ module.exports = {
         await sock.sendMessage(extra.from, {
           image: imageBuffer,
           caption: menuText,
-          mentions: [extra.sender]
+          mentions: [extra.sender],
+          contextInfo: {
+            forwardingScore: 1,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+              newsletterJid: config.CHANNEL_JID,
+              newsletterName: config.BOT_NAME,
+              serverMessageId: -1
+            }
+          }
         }, { quoted: msg });
       } else {
         const chunks = chunkText(menuText);

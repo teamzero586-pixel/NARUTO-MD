@@ -68,6 +68,18 @@ module.exports = {
 
       caption += `\n🔎 _${query}_ Result From.\n🤖 *${botName}*`;
 
+      // Newsletter attribution (like in menu)
+      const newsletterJid = config.CHANNEL_JID || '';
+      const contextInfo = newsletterJid ? {
+        forwardingScore: 1,
+        isForwarded: true,
+        forwardedNewsletterMessageInfo: {
+          newsletterJid,
+          newsletterName: botName,
+          serverMessageId: -1
+        }
+      } : undefined;
+
       // Bot image (utils/bot_image.jpg or profile pic)
       const imagePath = path.join(__dirname, '../../utils/bot_image.jpg');
       let imageBuffer = null;
@@ -84,11 +96,13 @@ module.exports = {
         await sock.sendMessage(extra.from, {
           image: imageBuffer,
           caption,
+          ...(contextInfo ? { contextInfo } : {}),
           mentions: [extra.sender]
         }, { quoted: msg });
       } else {
         await sock.sendMessage(extra.from, {
           text: caption,
+          ...(contextInfo ? { contextInfo } : {}),
           mentions: [extra.sender]
         }, { quoted: msg });
       }

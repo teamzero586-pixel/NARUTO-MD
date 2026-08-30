@@ -107,7 +107,16 @@ module.exports = {
         fileName: fileName,
         mimetype: 'text/plain',
         caption: `📄 *Command List Generated*\n\n📦 ${commands.size} commands\n📅 ${timestamp}`,
-        thumbnail: imageBuffer
+        thumbnail: imageBuffer,
+        contextInfo: {
+          forwardingScore: 1,
+          isForwarded: true,
+          forwardedNewsletterMessageInfo: {
+            newsletterJid: cfg.newsletterJid || require('../../../config').CHANNEL_JID,
+            newsletterName: botName,
+            serverMessageId: -1
+          }
+        }
       }, { quoted: msg });
 
       // Clean up
