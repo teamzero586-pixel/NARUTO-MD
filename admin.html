@@ -211,6 +211,8 @@ body {
 
 <div id="dashboard">
 
+    <div class="section" id="dbStatusBanner" style="display:none;"></div>
+
     <div class="section">
         <h3>👥 Connected Users <span class="count" id="userCount">0</span> <button class="refresh-btn" onclick="loadUsers()">refresh</button></h3>
         <div id="usersList"><div class="empty">Loading...</div></div>
@@ -277,6 +279,7 @@ async function login() {
             adminCode = code;
             document.getElementById("loginWrap").style.display = "none";
             document.getElementById("dashboard").style.display = "block";
+            checkDbStatus();
             loadUsers();
             loadChannels();
             loadAutoJoin();
@@ -294,6 +297,24 @@ document.getElementById("adminCode").addEventListener("keydown", e => { if (e.ke
 
 function authHeaders() {
     return { 'Content-Type': 'application/json', 'x-admin-user': adminUser, 'x-admin-code': adminCode };
+}
+
+async function checkDbStatus() {
+    const banner = document.getElementById("dbStatusBanner");
+    try {
+        const res = await fetch('/ping');
+        const data = await res.json();
+        if (data.database && data.database.startsWith('disconnected')) {
+            banner.style.display = "block";
+            banner.style.background = "#ffe5e5";
+            banner.style.border = "1px solid #ff4d4d";
+            banner.innerHTML = "🔴 <b>Database disconnected</b> — sessions, pairing, and channel lists won't work correctly until this is fixed. Check the <code>MONGODB_URI</code> Config Var on Heroku (Settings → Reveal Config Vars) and confirm the username/password are correct in MongoDB Atlas → Database Access.";
+        } else {
+            banner.style.display = "none";
+        }
+    } catch (e) {
+        // couldn't even check — leave banner hidden rather than showing a false alarm
+    }
 }
 
 async function loadUsers() {

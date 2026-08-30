@@ -59,20 +59,12 @@ cmd({
             imageSource = { url: imgTarget };
         }
 
-        // Send the message with image and caption — always forwarded from
-        // the number's own channel if they set one, else the default channel.
+        // Send the message with image and caption — no forwarded/channel tag.
         const msgPayload = {
             image: imageSource,
             caption: formattedInfo,
             contextInfo: {
-                mentionedJid: [m.sender],
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: channelJid,
-                    newsletterName: channelName,
-                    serverMessageId: 143
-                }
+                mentionedJid: [m.sender]
             }
         };
         await conn.sendMessage(from, msgPayload, { quoted: fakevCard });

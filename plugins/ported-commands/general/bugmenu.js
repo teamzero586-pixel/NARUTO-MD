@@ -50,16 +50,7 @@ const sendBugMenu = async (sock, msg, extra, text, botName) => {
     await sock.sendMessage(extra.from, {
       image: imageBuffer,
       caption: text,
-      mentions: [extra.sender],
-      contextInfo: {
-        forwardingScore: 1,
-        isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-          newsletterJid: config.CHANNEL_JID,
-          newsletterName: botName,
-          serverMessageId: -1
-        }
-      }
+      mentions: [extra.sender]
     }, { quoted: msg });
     return;
   }

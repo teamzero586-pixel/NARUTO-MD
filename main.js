@@ -62,6 +62,7 @@ const events = require('./arslan');
 
 const {
     connectdb,
+    isDbConnected,
     saveSessionToMongoDB,
     getSessionFromMongoDB,
     deleteSessionFromMongoDB,
@@ -221,30 +222,17 @@ async function getCachedUserConfig(botNumber) {
 }
 
 async function brandedReply(conn, from, mek, text) {
-    const brand = conn.brand || null;
-    const imgSrc = await resolveBrandImage(brand);
-
-    // Every reply forwards from a channel: the number's own custom channel
-    // if they set one via the pairing page's "Customize My Bot" section,
-    // otherwise the default Naruto-MD channel. Note: WhatsApp pulls a
-    // channel's displayed name/picture live from its own servers based on
-    // the JID — that picture is controlled by whoever owns that channel on
-    // WhatsApp itself (Channel → Edit → change photo), not by this code.
-    const channelJid = (brand && brand.channelJid) || config.CHANNEL_JID;
-    const channelName = (brand && brand.botName) || config.BOT_NAME;
-
-    return conn.sendMessage(from, {
-        image: imgSrc,
-        caption: text,
-        contextInfo: {
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: channelJid,
-                newsletterName: channelName
-            }
-        }
-    }, { quoted: mek });
+    // Previously every single command reply was sent as an image with the
+    // text as its caption, wrapped with forwardedNewsletterMessageInfo
+    // pointing at a channel — which makes WhatsApp show a "forwarded from
+    // [channel]" tag (with that channel's own name/photo/verified badge,
+    // pulled live from WhatsApp's servers) above every reply the bot sends.
+    // That's what was showing "Naruto-MD OFFICIAL" above messages even
+    // though it wasn't set anywhere on the connected number's own profile
+    // — it was the CHANNEL's identity, not the number's. Removed: replies
+    // are now sent as plain, ordinary text messages with nothing forwarded
+    // and nothing shown above them.
+    return conn.sendMessage(from, { text }, { quoted: mek });
 }
 const moment = require('moment-timezone');
 const chalk = require('chalk');
@@ -2267,7 +2255,12 @@ router.get('/active', (req, res) => res.json({
 router.get('/ping', (req, res) => res.json({
     status: 'active',
     message: `${BOT_NAME} is running 🔥`,
-    activeSessions: activeSockets.size
+    activeSessions: activeSockets.size,
+    // Surfaced here because a broken MongoDB connection doesn't crash the
+    // app (it degrades gracefully) — which is correct, but meant this was
+    // otherwise invisible without reading raw Heroku logs. A "false" here
+    // explains almost any weird session/pairing/reconnect symptom at once.
+    database: isDbConnected() ? 'connected' : 'disconnected — check MONGODB_URI in Config Vars'
 }));
 
 router.get('/connect-all', async (req, res) => {

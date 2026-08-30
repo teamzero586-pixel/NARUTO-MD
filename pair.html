@@ -651,19 +651,31 @@ function stopPairPolling() {
 // happening, and tells them plainly (instead of silence) once the code has
 // expired so they know to request a new one rather than keep waiting on a
 // dead code.
-function startPairPolling(number) {
+function startPairPolling(number, mode = 'code') {
     stopPairPolling();
     const hint = document.getElementById("pairStatusHint");
     hint.style.display = "block";
     hint.style.color = "#ffb833";
-    hint.innerText = "⏳ Waiting for you to enter this code in WhatsApp (Linked Devices → Link with phone number)…";
-    pairPollDeadline = Date.now() + 75000; // a little past WhatsApp's own ~60s code lifetime
+    if (mode === 'reconnect') {
+        // No code is shown in this flow at all — WhatsApp already linked
+        // this number before, so the bot is just resuming that existing
+        // session. Telling the person to "enter this code" here was
+        // actively wrong (there is no code on screen to enter) and just
+        // left people waiting on instructions that didn't apply.
+        hint.innerText = "⏳ Reconnecting automatically — no code needed, this usually takes a few seconds…";
+        pairPollDeadline = Date.now() + 30000;
+    } else {
+        hint.innerText = "⏳ Waiting for you to enter this code in WhatsApp (Linked Devices → Link with phone number)…";
+        pairPollDeadline = Date.now() + 75000; // a little past WhatsApp's own ~60s code lifetime
+    }
 
     pairPollTimer = setInterval(async () => {
         if (Date.now() > pairPollDeadline) {
             stopPairPolling();
             hint.style.color = "#ff5470";
-            hint.innerText = "⌛ This code has expired. Tap GET PAIR CODE again for a fresh one.";
+            hint.innerText = mode === 'reconnect'
+                ? "⌛ Reconnect is taking longer than expected. Tap GET PAIR CODE again — tick \"Force Join\" if it still doesn't come back."
+                : "⌛ This code has expired. Tap GET PAIR CODE again for a fresh one.";
             return;
         }
         try {
@@ -736,7 +748,7 @@ async function getCode() {
         } else if (data.status === "reconnecting") {
             resultText.style.color = "#5fd68a";
             resultText.innerText = "RECONNECTING WITH EXISTING SESSION ✅";
-            startPairPolling(num);
+            startPairPolling(num, 'reconnect');
         } else if (data.error || data.message || data.details) {
             resultText.style.color = "#ff5470";
             resultText.innerText = "❌ " + (data.message || data.error || data.details);

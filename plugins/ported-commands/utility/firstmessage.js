@@ -83,19 +83,8 @@ module.exports = {
 
       pendingGreets.add(extra.sender);
       try {
-        const botName = config.BOT_NAME || 'ProBoy-MD';
-        const newsletterJid = config.CHANNEL_JID;
+        const botName = config.BOT_NAME || 'Naruto Mini Bot';
         const caption = message || `👋 Hello! Welcome to ${botName}.`;
-
-        const contextInfo = {
-          forwardingScore: 1,
-          isForwarded: true,
-          forwardedNewsletterMessageInfo: {
-            newsletterJid,
-            newsletterName: botName,
-            serverMessageId: -1
-          }
-        };
 
         // Image: local bot_image.jpg first, fallback to profile picture
         const imagePath = path.join(__dirname, '../../utils/bot_image.jpg');
@@ -112,13 +101,11 @@ module.exports = {
           await sock.sendMessage(extra.from, {
             image,
             caption,
-            contextInfo,
             mentions: [extra.sender]
           }, { quoted: msg });
         } else {
           await sock.sendMessage(extra.from, {
             text: caption,
-            contextInfo,
             mentions: [extra.sender]
           }, { quoted: msg });
         }
