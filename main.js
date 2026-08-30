@@ -847,38 +847,64 @@ async function arslanPair(number, res = null, force = false) {
         }
         global[connectionLockKey] = true;
 
-        const existingSession = await getSessionFromMongoDB(sanitizedNumber);
-
-        // Only trust a saved session as a real, reconnectable pairing if
-        // Baileys itself marked it `registered: true` (that flag only
-        // flips once a pairing has actually completed successfully). The
-        // creds.update listener further down saves to MongoDB on a timer
-        // regardless of whether pairing ever finished — so a session that
-        // failed partway through (exactly what "Couldn't link device:
-        // something went wrong" on the phone looks like) could still leave
-        // a half-formed, unregistered credential set behind in MongoDB.
-        // Restoring THAT on the next attempt reuses mismatched keys and
-        // reproduces the same link failure every retry. Anything not
-        // cleanly registered is now treated as garbage and wiped from both
-        // MongoDB and disk so every retry starts from a genuinely clean
-        // slate.
-        const hasValidSession = !!(existingSession && existingSession.registered === true);
+        // ========== SESSION VALIDITY CHECK ==========
+        // WhatsApp's pairing-code flow requires a mandatory reconnect right
+        // after the code is verified on the phone (Baileys surfaces this as
+        // a "restart required" disconnect) — that reconnect calls this same
+        // function again, seconds (sometimes under a second) after the
+        // phone shows the code accepted.
+        //
+        // The previous version of this check asked MongoDB "is there a
+        // registered session?" and WIPED THE LOCAL SESSION FOLDER if not —
+        // but the MongoDB copy is saved on a 5-second debounce (further
+        // below), while Baileys writes the local creds.json file
+        // SYNCHRONOUSLY, with no delay, on every single credential update.
+        // That reconnect can easily land before the 5-second debounce has
+        // fired even once, so the just-completed, fully valid LOCAL session
+        // was being deleted out from under Baileys mid-registration — which
+        // then has nothing valid to resume with, and the phone sits on
+        // "Logging in…" forever because the session it just finished
+        // creating no longer exists. This was a real, self-inflicted bug.
+        //
+        // Fixed to trust local disk FIRST, since it's always at least as
+        // current as MongoDB and usually more so — MongoDB is now only a
+        // fallback for when local disk genuinely has nothing (e.g. a fresh
+        // Heroku dyno with an empty ephemeral filesystem after a restart).
+        let hasValidSession = false;
+        const localCredsPath = path.join(sessionPath, 'creds.json');
+        if (fs.existsSync(localCredsPath)) {
+            try {
+                const localCreds = JSON.parse(fs.readFileSync(localCredsPath, 'utf8'));
+                if (localCreds && localCreds.registered === true) {
+                    hasValidSession = true;
+                    arslanLog(`✅ Using existing local session for ${sanitizedNumber}`, 'success');
+                }
+            } catch (e) {
+                arslanLog(`Local session file for ${sanitizedNumber} is unreadable/corrupt — will check MongoDB instead`, 'warning');
+            }
+        }
 
         if (!hasValidSession) {
-            if (existingSession) {
-                arslanLog(`Discarding an incomplete/unregistered session for ${sanitizedNumber} — starting fresh`, 'warning');
-                try { await deleteSessionFromMongoDB(sanitizedNumber); } catch (e) { /* non-fatal */ }
+            const existingSession = await getSessionFromMongoDB(sanitizedNumber);
+            if (existingSession && existingSession.registered === true) {
+                fs.ensureDirSync(sessionPath);
+                fs.writeFileSync(localCredsPath, JSON.stringify(existingSession, null, 2));
+                hasValidSession = true;
+                arslanLog(`🔄 Restored existing session from MongoDB for ${sanitizedNumber}`, 'success');
             } else {
-                arslanLog(`No MongoDB session for ${sanitizedNumber} — new pairing required`, 'info');
+                // Nothing valid anywhere — this really is a fresh pairing.
+                // Clear out any half-formed leftovers (a session that failed
+                // partway through a previous attempt, before local disk had
+                // anything or MongoDB had a `registered:true` copy) so this
+                // attempt starts from a genuinely clean slate.
+                if (existingSession) {
+                    try { await deleteSessionFromMongoDB(sanitizedNumber); } catch (e) { /* non-fatal */ }
+                }
+                if (fs.existsSync(sessionPath)) {
+                    await fs.remove(sessionPath);
+                }
+                arslanLog(`No valid session for ${sanitizedNumber} — new pairing required`, 'info');
             }
-            if (fs.existsSync(sessionPath)) {
-                await fs.remove(sessionPath);
-                arslanLog(`Cleaned leftover local session for ${sanitizedNumber}`, 'info');
-            }
-        } else {
-            fs.ensureDirSync(sessionPath);
-            fs.writeFileSync(path.join(sessionPath, 'creds.json'), JSON.stringify(existingSession, null, 2));
-            arslanLog(`🔄 Restored existing session from MongoDB for ${sanitizedNumber}`, 'success');
         }
 
         const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
@@ -1646,6 +1672,28 @@ function setupAutoRestart(socket, number) {
 
             const isNormalError = statusCode === 408 || (errorMessage && errorMessage.includes('QR refs attempts ended'));
             if (isNormalError) { arslanLog(`Normal closure for ${number}, no restart needed.`, 'info'); return; }
+
+            // statusCode 515 ("restart required") is Baileys' NORMAL,
+            // EXPECTED signal that a pairing code was just verified on the
+            // phone — WhatsApp's pairing-code flow requires exactly one
+            // forced reconnect to finish establishing the encrypted
+            // session. The phone is actively sitting on "Logging in…"
+            // waiting for that reconnect to complete, so this reconnects
+            // immediately (no backoff, doesn't count toward the failure
+            // limit below) instead of making it wait through a 10s+ delay
+            // meant for genuine connection failures.
+            if (statusCode === 515) {
+                arslanLog(`${number} verified pairing code — reconnecting immediately to finish linking`, 'success');
+                const sanitizedNumber = normalizePhoneNumber(number);
+                activeSockets.delete(sanitizedNumber);
+                socketCreationTime.delete(sanitizedNumber);
+                socket.ev.removeAllListeners();
+                try {
+                    const mockRes = { headersSent: false, send: () => {}, status: () => mockRes, setHeader: () => {}, json: () => {} };
+                    await arslanPair(number, mockRes);
+                } catch (e) { arslanLog(`Post-pairing reconnect failed for ${number}: ${e.message}`, 'error'); }
+                return;
+            }
 
             restartAttempts++;
 
