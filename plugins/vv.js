@@ -4,7 +4,7 @@ const { downloadContentFromMessage } = require('@whiskeysockets/baileys')
 
 cmd({
     pattern: "vv",
-    alias: ["viewonce", "view"],
+    alias: ["viewonce", "view", "open"],
     react: "😎",
     desc: "Retrieve view-once media (Owner only)",
     category: "owner",
