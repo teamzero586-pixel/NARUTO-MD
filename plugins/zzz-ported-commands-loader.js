@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const { cmd } = require('../arslan');
 const config = require('../config');
+const realDb = require('../lib/database');
 
 const PORTED_DIR = path.join(__dirname, 'ported-commands');
 
@@ -24,6 +25,19 @@ const dbShim = {
     set(key, val) { memStore.set(key, val); return true; },
     has(key) { return memStore.has(key); },
     delete(key) { return memStore.delete(key); },
+    // getGlobalSetting/setGlobalSetting were called by ~15 ported plugins
+    // (.button, .autoreact, .autostatus, .ban/.unban, .setsudo/.removesudo,
+    // .gccmd, .publish, first-message greeting, .autoreply) but this shim
+    // never had them at all — every one of those commands has been
+    // throwing "database.getGlobalSetting is not a function" since day
+    // one. Wired through to the real, MongoDB-backed, persistent
+    // implementation in lib/database.js instead of adding another
+    // non-persistent stub — these are exactly the kind of settings
+    // (ban lists, sudo lists, on/off toggles) that need to survive a
+    // dyno restart, so the in-memory-only memStore above was never the
+    // right place for them even before the crash.
+    getGlobalSetting: realDb.getGlobalSetting,
+    setGlobalSetting: realDb.setGlobalSetting,
 };
 
 // ---- adapt this bot's UPPER_SNAKE config to ProBoy's lowerCamel shape ----
